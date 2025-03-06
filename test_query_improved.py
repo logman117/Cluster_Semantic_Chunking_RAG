@@ -278,7 +278,7 @@ Remember: Page citations are CRITICAL. Every fact must be linked to a specific p
         await self.client.aclose()
 
 async def interactive_mode():
-    print("\n=== Nilfisk Service Manual RAG System ===")
+    print("\n=== Service Manual RAG System ===")
     print("Type 'exit' to quit\n")
     
     rag = RAGQuery()
