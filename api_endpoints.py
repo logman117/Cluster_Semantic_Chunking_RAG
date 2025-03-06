@@ -32,8 +32,8 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(
-    title="Nilfisk Service Manual RAG API",
-    description="API for the Nilfisk Service Manual Retrieval-Augmented Generation System",
+    title="Service Manual RAG API",
+    description="API for the Service Manual Retrieval-Augmented Generation System",
     version="1.0.0",
     lifespan=lifespan
 )
