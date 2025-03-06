@@ -85,7 +85,7 @@ class ResponseGenerator:
         await self.client.aclose()
 
 class RAGSystem:
-    """Retrieval-Augmented Generation system for Nilfisk service manual."""
+    """Retrieval-Augmented Generation system for a service manual."""
     
     def __init__(self):
         """Initialize RAG system components."""
