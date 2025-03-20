@@ -33,7 +33,8 @@ class ResponseGenerator:
     async def generate_response(self, 
                               system_prompt: str,
                               user_query: str, 
-                              context: str) -> str:
+                              context: str,
+                              machine_info: Dict[str, Any]) -> str:
         """
         Generate a response using GPT-4o.
         
@@ -41,6 +42,7 @@ class ResponseGenerator:
             system_prompt: System prompt for the model
             user_query: User's query
             context: Retrieved context with page numbers
+            machine_info: Information about the selected machine
             
         Returns:
             Generated response
@@ -50,9 +52,15 @@ class ResponseGenerator:
             "api-key": self.api_key
         }
         
+        # Update system prompt with machine-specific information
+        machine_specific_prompt = system_prompt.replace(
+            "You are an assistant for technical service manuals.",
+            f"You are an assistant for the {machine_info['name']} ({machine_info['model']}) technical service manual."
+        )
+        
         messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Query: {user_query}\n\nContext:\n{context}"}
+            {"role": "system", "content": machine_specific_prompt},
+            {"role": "user", "content": f"Query about {machine_info['name']} ({machine_info['model']}): {user_query}\n\nContext:\n{context}"}
         ]
         
         payload = {
@@ -85,7 +93,7 @@ class ResponseGenerator:
         await self.client.aclose()
 
 class RAGSystem:
-    """Retrieval-Augmented Generation system for a service manual."""
+    """Retrieval-Augmented Generation system for service manuals."""
     
     def __init__(self):
         """Initialize RAG system components."""
@@ -94,24 +102,35 @@ class RAGSystem:
         self.response_generator = ResponseGenerator()
     
     async def process_query(self, 
-                          query: str, 
+                          query: str,
+                          machine_id: str,
                           top_k: int = 5) -> str:
         """
         Process a user query and generate a response with page citations.
         
         Args:
             query: User's query
+            machine_id: ID of the machine to query about
             top_k: Number of chunks to retrieve
             
         Returns:
             Generated response with page citations
         """
         try:
+            # Get machine information
+            machine_info = await self.vector_store.get_machine_info(machine_id)
+            
+            if not machine_info:
+                return f"Error: Machine with ID '{machine_id}' not found. Please select a valid machine."
+            
             # Generate embedding for the query
             query_embedding = await self.embedding_generator.generate_embedding(query)
             
-            # Retrieve relevant chunks
-            chunks = await self._retrieve_chunks(query_embedding, top_k)
+            # Retrieve relevant chunks for the specified machine
+            chunks = await self._retrieve_chunks(query_embedding, machine_id, top_k)
+            
+            if not chunks:
+                return f"I couldn't find any information about this in the {machine_info['name']} service manual. Please try a different query or select a different machine."
             
             # Format context with page numbers
             context = self._format_context(chunks)
@@ -123,7 +142,8 @@ class RAGSystem:
             response = await self.response_generator.generate_response(
                 system_prompt=system_prompt,
                 user_query=query,
-                context=context
+                context=context,
+                machine_info=machine_info
             )
             
             return response
@@ -134,20 +154,23 @@ class RAGSystem:
     
     async def _retrieve_chunks(self, 
                              query_embedding: List[float],
+                             machine_id: str,
                              top_k: int = 5) -> List[Dict[str, Any]]:
         """
-        Retrieve relevant chunks from the vector store.
+        Retrieve relevant chunks from the vector store for a specific machine.
         
         Args:
             query_embedding: Embedding vector of the query
+            machine_id: ID of the machine to query
             top_k: Number of chunks to retrieve
             
         Returns:
             List of chunks with metadata and similarity scores
         """
-        # Try with a very low threshold to ensure we get results
-        chunks = self.vector_store.similarity_search(
+        # Try with a low threshold to ensure we get results
+        chunks = self.vector_store.similarity_search_by_machine(
             query_embedding=query_embedding,
+            machine_id=machine_id,
             limit=top_k,
             similarity_threshold=0.0
         )
@@ -235,11 +258,12 @@ if __name__ == "__main__":
         rag_system = await initialize_rag_system()
         
         try:
-            # Test with a sample query
+            # Test with a sample query for a specific machine
+            machine_id = "sc50"  # Example machine ID
             query = "What does error code E001 mean?"
-            response = await rag_system.process_query(query)
+            response = await rag_system.process_query(query, machine_id)
             
-            print(f"Query: {query}")
+            print(f"Query for machine {machine_id}: {query}")
             print("-" * 50)
             print(f"Response:\n{response}")
             
