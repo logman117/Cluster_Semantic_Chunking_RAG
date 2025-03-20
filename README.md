@@ -1,94 +1,48 @@
-# Semantic PDF RAG System
+# Semantic RAG System
 
-A sophisticated Retrieval-Augmented Generation (RAG) system designed to semantically process, index, and query PDF documents using state-of-the-art language models. This system leverages advanced semantic chunking techniques and vector similarity search to provide precise answers from your document collection with accurate page citations.
+A specialized Retrieval-Augmented Generation (RAG) system for industrial service manuals that provides precise answers with page-specific citations. This system combines advanced semantic chunking with vector similarity search to help technicians quickly find relevant information in large technical documents.
 
-![RAG System Overview](https://via.placeholder.com/800x400?text=RAG+System+Overview)
+![Manual Assistant](https://via.placeholder.com/800x400?text=Service+Manual+Assistant)
 
-## Features
+## 🌟 Features
 
-- **Advanced Semantic Chunking**: Uses a clustering-based approach to create semantically coherent chunks that span multiple pages when conceptually related
-- **Vector Search**: High-performance vector similarity search using Supabase Vector Store
-- **Accurate Page Citations**: Automatically tracks and cites the specific pages where information is found
-- **Azure OpenAI Integration**: Leverages Azure OpenAI API for embeddings and response generation
-- **PDF Processing**: Reliable extraction of text content from PDF files with page boundary tracking
-- **API Interface**: FastAPI-based REST API for easy integration
-- **Interactive CLI**: Command-line interface for testing and direct interaction
+- **Machine-Specific Retrieval**: Target searches to specific equipment models
+- **Page-Accurate Citations**: Every answer includes exact page numbers from the source manuals
+- **Multi-Page Semantic Chunking**: Intelligently handles content that spans across page boundaries
+- **Error Code Lookup**: Enhanced query handling for error codes and troubleshooting
+- **Vector Search Optimization**: Precision-tuned embedding similarity for technical content
+- **Multi-Interface Access**: CLI, API, and React web interface options
 
-## Architecture
+## 🏗️ System Architecture
 
-The system consists of several key components:
+The system has five main components:
 
-1. **PDF Processing Pipeline**
-   - Extracts text while preserving page information
-   - Processes document structure and metadata
+1. **Document Processing Pipeline**
+   - Extracts text while preserving page boundaries
+   - Creates semantically coherent chunks using clustering algorithms
+   - Handles cross-page concepts intelligently
 
-2. **Semantic Chunking Engine**
-   - Splits documents intelligently using semantic clustering
-   - Maintains multi-page chunks when concepts span page boundaries
-   - Preserves original page citations for each chunk
+2. **Vector Database**
+   - Supabase PostgreSQL with pgvector extension
+   - Custom SQL functions for optimized document-specific search
+   - Efficient machine-to-document mapping
 
-3. **Vector Database Integration**
-   - Generates and stores embeddings using Azure OpenAI text-embedding-3-large
-   - Uses Supabase vector store for efficient similarity search
+3. **Embedding Generation**
+   - Uses Azure OpenAI text-embedding-3-large model
+   - Implements retry logic and rate limiting
+   - Batch processing for large documents
 
 4. **Query Processing**
-   - Generates embeddings for user queries
-   - Retrieves relevant document chunks with page citations
-   - Formats context for the language model
+   - Error code detection and query enhancement
+   - Hybrid vector + text search capabilities
+   - Smart chunking to provide concise context
 
 5. **Response Generation**
-   - Uses GPT-4o to create accurate, helpful responses
-   - Includes precise page citations in responses
-   - Summarizes and presents information clearly
+   - GPT-4o-powered answers with strict citation requirements
+   - Page-specific references for every fact provided
+   - Machine-specific context awareness
 
-## System Components
-
-### 1. Cluster Semantic Chunker
-
-The `ClusterSemanticChunker` implements an innovative approach to document splitting:
-
-- Breaks documents into semantically coherent chunks
-- Uses embeddings to determine content similarity
-- Maintains optimal chunk sizes for the RAG system
-- Tracks page boundaries to provide accurate citations
-- Implements chunk overlap to preserve context
-
-### 2. Embedding Generation
-
-The `EmbeddingGenerator` provides:
-
-- Asynchronous embedding generation for optimal performance
-- Rate limiting and retry logic for API stability
-- Batch processing to handle large document collections
-- Configurable embedding dimensions and models
-
-### 3. Supabase Vector Store
-
-The `SupabaseVectorStore` manages:
-
-- Storage of document metadata
-- Vector embeddings for similarity search
-- Custom SQL functions for efficient queries
-- Metadata management for documents and chunks
-
-### 4. RAG System
-
-The core `RAGSystem` orchestrates:
-
-- Query processing and embedding generation
-- Context retrieval and formatting
-- Response generation with citations
-- Integration of all system components
-
-### 5. API Endpoints
-
-The `FastAPI` application provides:
-
-- Document upload and processing endpoints
-- Query processing endpoint
-- Health check and system status
-
-## Installation
+## 💻 Installation
 
 ### Prerequisites
 
@@ -100,8 +54,8 @@ The `FastAPI` application provides:
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/semantic-pdf-rag.git
-cd semantic-pdf-rag
+git clone https://github.com/yourusername/service-rag.git
+cd service-rag
 ```
 
 2. Create a virtual environment:
@@ -124,67 +78,91 @@ SUPABASE_SERVICE_KEY=your-service-key
 ```
 
 5. Set up Supabase database:
-   - Run the SQL script in `supabase query.sql` to create the necessary tables and functions
-   - Enable the Vector extension in your Supabase project
+   - Run the SQL script in `supabase_query.sql` to create the necessary tables and functions
+   - Ensure the Vector extension is enabled in your Supabase project
 
-## Usage
+## 🚀 Usage
 
-### Processing Documents
+### Processing Service Manuals
 
-1. Place PDF files in the `data/pdfs` directory.
+1. Place PDF service manuals in the `data/pdfs` directory
+2. If you have an Excel mapping file, place it in the root directory as `Service_manual_L5_relations.xlsx`
+3. Run the document processing script:
 
-2. Run the embedding generation script:
 ```bash
-python embedding_generation.py
+python process_manuals.py
 ```
 
 This will:
 - Process all PDFs in the directory
-- Generate semantic chunks
-- Create and store embeddings
-- Update the vector database
+- Create machine entities in the database (if they don't exist)
+- Generate semantically coherent chunks
+- Create and store embeddings in Supabase
 
-### Querying the System
+### Interactive Command Line Interface
 
-#### Using the API
-
-1. Start the API server:
-```bash
-python api_endpoints.py
-```
-
-2. Upload a document:
-```bash
-curl -X POST -F "file=@your_document.pdf" http://localhost:8000/documents/upload
-```
-
-3. Query the system:
-```bash
-curl -X POST -H "Content-Type: application/json" \
-  -d '{"query": "What does error code E001 mean?", "top_k": 5}' \
-  http://localhost:8000/query
-```
-
-#### Using the Interactive CLI
-
-For testing and direct interaction:
+For direct, machine-specific querying:
 
 ```bash
 python test_query_improved.py
 ```
 
-This will start an interactive session where you can type queries and view responses.
+This will:
+1. Let you select a machine from the available options
+2. Allow you to ask questions about that specific machine
+3. Provide answers with page citations from the service manual
 
-## Configuration Options
+### Web Interface
 
-The system can be configured by modifying parameters in the initialization of various components:
+Start the FastAPI backend:
+```bash
+python api_endpoints.py
+```
 
-- **Chunking parameters**: Adjust chunk sizes in `DocumentProcessor` initialization
-- **Embedding dimensions**: Configure in `EmbeddingGenerator`
-- **Similarity thresholds**: Modify in `similarity_search` methods
-- **API rate limits**: Adjust retry and batch parameters in `generate_embeddings_batch`
+Then integrate the React component (`service-manual-frontend.tsx`) into your web application.
 
-## Contributing
+### API Usage
+
+The system provides a RESTful API:
+
+```bash
+# Query about a machine
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"query": "What does error code 5-120 mean?", "machine_id": "cs7010", "top_k": 5}' \
+  http://localhost:8000/query
+
+# Upload a new manual
+curl -X POST -F "file=@your_manual.pdf" -F "machine_id=cs7010" \
+  http://localhost:8000/documents/upload
+```
+
+## ⚙️ Configuration Options
+
+The system can be tuned by modifying these parameters:
+
+- **Chunking Size**: In `cluster_semantic_chunker.py`, modify `max_chunk_size` (default: 200 tokens)
+- **Vector Search Threshold**: In DB functions or API calls, adjust `match_threshold` (default: 0.0)
+- **Top Results**: Change `top_k` parameter for more or fewer results
+- **Error Code Boost**: In `test_query_improved.py`, modify the weighted average value for error code queries
+
+## 🔧 Technologies Used
+
+- **Azure OpenAI**: For embeddings (text-embedding-3-large) and response generation (GPT-4o)
+- **Supabase**: Vector database with pgvector for similarity search
+- **FastAPI**: Backend API services 
+- **React**: Web frontend components
+- **PyMuPDF**: PDF text extraction with page awareness
+- **Pandas**: For processing service manual mappings
+
+## 📚 Related Papers and Techniques
+
+- This implementation uses an innovative clustering-based semantic chunking approach that extends beyond simple text splitting:
+  - Creates embeddings for small text pieces
+  - Uses cosine similarity to group semantically related content
+  - Maintains optimal chunk sizes while preserving semantic coherence 
+  - Implements cross-page tracking for concepts that span multiple pages
+
+## 🤝 Contributing
 
 Contributions to improve the system are welcome. Please follow these steps:
 
@@ -194,13 +172,14 @@ Contributions to improve the system are welcome. Please follow these steps:
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## License
+## 📄 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Acknowledgments
+## 🙏 Acknowledgments
 
-- Azure OpenAI for providing the embedding and language models
-- Supabase for the vector database capabilities
+- Azure OpenAI for providing embedding and language models
+- Supabase for vector database capabilities
 - PyMuPDF for PDF processing
-- FastAPI for the API server framework
+- FastAPI for the API framework
+- The Retrieval-Augmented Generation research community
