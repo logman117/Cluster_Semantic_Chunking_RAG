@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nilfisk Service Manual Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .prose { max-width: 65ch; }
+        .prose p { margin-top: 1.25em; margin-bottom: 1.25em; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="app" class="min-h-screen flex flex-col">
+        <header class="bg-blue-600 text-white p-4 shadow-md">
+            <div class="container mx-auto flex items-center justify-between">
+                <h1 class="text-xl font-bold">Nilfisk Service Manual Assistant</h1>
+                
+                <!-- Machine Selection -->
+                <div class="flex items-center space-x-2">
+                    <select 
+                        id="machineSelect"
+                        class="px-3 py-2 rounded bg-white text-gray-800 border-none w-64"
+                    >
+                        <option value="">Select a machine...</option>
+                    </select>
+                    
+                    <button 
+                        id="refreshBtn"
+                        class="p-2 bg-blue-700 rounded hover:bg-blue-800"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="refresh-icon"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="loading-icon hidden"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                    </button>
+                </div>
+            </div>
+        </header>
+        
+        <main class="flex-1 container mx-auto p-4 flex flex-col overflow-hidden">
+            <!-- Machine Info -->
+            <div id="machineInfo" class="bg-blue-50 p-4 rounded-lg mb-4 border border-blue-100 hidden">
+                <h2 id="machineName" class="text-lg font-semibold text-blue-800"></h2>
+                <p id="machineDescription" class="text-sm text-blue-600 mt-1"></p>
+            </div>
+            
+            <!-- Error Message -->
+            <div id="errorMessage" class="bg-red-50 text-red-600 p-4 rounded-lg mb-4 border border-red-100 hidden"></div>
+            
+            <!-- Response Area -->
+            <div id="responseArea" class="flex-1 bg-white rounded-lg shadow-md p-6 mb-4 overflow-y-auto">
+                <div id="responseContent" class="prose max-w-none whitespace-pre-line"></div>
+                <div id="emptyState" class="h-full flex items-center justify-center text-gray-400">
+                    <p>Ask a question about the service manual...</p>
+                </div>
+                <div id="loadingIndicator" class="hidden flex justify-center mt-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="animate-spin text-blue-600"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                </div>
+            </div>
+            
+            <!-- Query Input -->
+            <form id="queryForm" class="flex space-x-2">
+                <input
+                    id="queryInput"
+                    type="text"
+                    placeholder="Ask about the service manual..."
+                    class="flex-1 px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                    type="submit"
+                    class="bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-400"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                </button>
+            </form>
+        </main>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+        let selectedMachine = null;
+        
+        // Elements
+        const machineSelect = document.getElementById('machineSelect');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const machineInfo = document.getElementById('machineInfo');
+        const machineName = document.getElementById('machineName');
+        const machineDescription = document.getElementById('machineDescription');
+        const errorMessage = document.getElementById('errorMessage');
+        const responseArea = document.getElementById('responseArea');
+        const responseContent = document.getElementById('responseContent');
+        const emptyState = document.getElementById('emptyState');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const queryForm = document.getElementById('queryForm');
+        const queryInput = document.getElementById('queryInput');
+        const refreshIcon = document.querySelector('.refresh-icon');
+        const loadingIcon = document.querySelector('.loading-icon');
+        
+        // Fetch machines
+        async function fetchMachines() {
+            refreshIcon.classList.add('hidden');
+            loadingIcon.classList.remove('hidden');
+            loadingIcon.classList.add('animate-spin');
+            
+            try {
+                const response = await fetch(`${API_URL}/machines`);
+                if (!response.ok) {
+                    throw new Error('Failed to fetch machines');
+                }
+                
+                const data = await response.json();
+                
+                // Clear existing options except the first one
+                while (machineSelect.options.length > 1) {
+                    machineSelect.remove(1);
+                }
+                
+                // Add new options
+                data.machines.forEach(machine => {
+                    const option = document.createElement('option');
+                    option.value = machine.id;
+                    option.textContent = `${machine.name} (${machine.model})`;
+                    option.machine = machine; // Store the full machine object
+                    machineSelect.appendChild(option);
+                });
+                
+                // Check if we have a stored machine
+                const storedMachineId = localStorage.getItem('selectedMachineId');
+                if (storedMachineId) {
+                    machineSelect.value = storedMachineId;
+                    handleMachineChange();
+                }
+            } catch (err) {
+                console.error('Error fetching machines:', err);
+                showError('Failed to load machines. Please refresh and try again.');
+            } finally {
+                refreshIcon.classList.remove('hidden');
+                loadingIcon.classList.add('hidden');
+            }
+        }
+        
+        // Handle machine selection
+        function handleMachineChange() {
+            const selectedOption = machineSelect.options[machineSelect.selectedIndex];
+            
+            if (machineSelect.value) {
+                selectedMachine = selectedOption.machine;
+                localStorage.setItem('selectedMachineId', selectedMachine.id);
+                
+                // Update machine info display
+                machineName.textContent = `${selectedMachine.name} (${selectedMachine.model})`;
+                machineDescription.textContent = selectedMachine.description || '';
+                machineInfo.classList.remove('hidden');
+                
+                // Clear previous response
+                responseContent.innerHTML = '';
+                emptyState.textContent = `Ask a question about the ${selectedMachine.name} service manual`;
+                emptyState.classList.remove('hidden');
+            } else {
+                selectedMachine = null;
+                localStorage.removeItem('selectedMachineId');
+                machineInfo.classList.add('hidden');
+                emptyState.textContent = 'Please select a machine first';
+            }
+        }
+        
+        // Handle query submission
+        async function handleSubmit(e) {
+            e.preventDefault();
+            
+            const query = queryInput.value.trim();
+            if (!query) return;
+            
+            if (!selectedMachine) {
+                showError('Please select a machine first');
+                return;
+            }
+            
+            // Show loading state
+            emptyState.classList.add('hidden');
+            loadingIndicator.classList.remove('hidden');
+            responseContent.innerHTML = '';
+            
+            try {
+                const response = await fetch(`${API_URL}/query`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        query: query,
+                        machine_id: selectedMachine.id,
+                        top_k: 10
+                    }),
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch response');
+                }
+                
+                const data = await response.json();
+                
+                // Format response with colored citations
+                const formattedResponse = formatResponse(data.response);
+                responseContent.innerHTML = formattedResponse;
+                
+                // Save to history
+                saveToHistory(query, data.response);
+                
+            } catch (err) {
+                console.error('Error querying API:', err);
+                showError('Failed to get a response. Please try again.');
+            } finally {
+                loadingIndicator.classList.add('hidden');
+            }
+        }
+        
+        // Format response with colored citations
+        function formatResponse(text) {
+            if (!text) return '';
+            
+            // Replace citations with styled spans
+            return text.replace(/(\[Document: [^\]]+\])/g, 
+                '<span class="text-blue-600 font-medium">$1</span>'
+            );
+        }
+        
+        // Show error message
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.remove('hidden');
+            
+            // Hide after 5 seconds
+            setTimeout(() => {
+                errorMessage.classList.add('hidden');
+            }, 5000);
+        }
+        
+        // Save query to history
+        function saveToHistory(query, response) {
+            if (!selectedMachine) return;
+            
+            const history = JSON.parse(localStorage.getItem('queryHistory') || '[]');
+            
+            // Add new item at the beginning
+            history.unshift({
+                query,
+                response,
+                machine: selectedMachine,
+                timestamp: new Date().toISOString()
+            });
+            
+            // Keep only last 50 queries
+            if (history.length > 50) {
+                history.pop();
+            }
+            
+            localStorage.setItem('queryHistory', JSON.stringify(history));
+        }
+        
+        // Event Listeners
+        document.addEventListener('DOMContentLoaded', fetchMachines);
+        refreshBtn.addEventListener('click', fetchMachines);
+        machineSelect.addEventListener('change', handleMachineChange);
+        queryForm.addEventListener('submit', handleSubmit);
+    </script>
+</body>
+</html>
