@@ -167,21 +167,198 @@ class RAGSystem:
         Returns:
             List of chunks with metadata and similarity scores
         """
-        # Try with a low threshold to ensure we get results
-        chunks = self.vector_store.similarity_search_by_machine(
-            query_embedding=query_embedding,
-            machine_id=machine_id,
-            limit=top_k,
-            similarity_threshold=0.0
-        )
+        # First get machine info to have access to the correct machine_id in the database
+        try:
+            machine_info = await self.vector_store.get_machine_info(machine_id)
+            if machine_info:
+                logger.info(f"Found machine info: {machine_info}")
+                db_machine_id = machine_info.get('id')  # The ID in our database
+            else:
+                logger.warning(f"No machine info found for machine_id {machine_id}")
+                db_machine_id = machine_id
+        except Exception as e:
+            logger.warning(f"Error getting machine info: {e}")
+            db_machine_id = machine_id
+
+        # DIRECT APPROACH: Try to find the document with an ID matching the machine ID (uppercase)
+        document_id = machine_id.upper()  # Convert sc500 to SC500
+        logger.info(f"Looking for document with ID: {document_id}")
         
-        # Print some debug information about the results
-        for i, result in enumerate(chunks):
-            similarity = result.get('similarity', 'unknown')
-            page_display = result.get('page_display', result.get('page_numbers', 'unknown'))
-            logger.info(f"Result {i+1}: Pages {page_display}, Similarity: {similarity}")
+        try:
+            # Check if the document exists
+            doc_check = self.vector_store.supabase.table("documents").select("*").eq("id", document_id).execute()
+            
+            if hasattr(doc_check, "data") and doc_check.data:
+                logger.info(f"Found document with ID {document_id}: {doc_check.data[0]}")
+                
+                # Use match_chunks_by_document function
+                response = self.vector_store.supabase.rpc(
+                    "match_chunks_by_document",
+                    {
+                        "query_embedding": query_embedding,
+                        "input_document_id": document_id,
+                        "match_threshold": 0.0,
+                        "match_count": top_k
+                    }
+                ).execute()
+                
+                if hasattr(response, "data") and response.data and response.data:
+                    chunks = response.data
+                    logger.info(f"Retrieved {len(chunks)} chunks for document {document_id}")
+                    
+                    # Print debug info
+                    for i, result in enumerate(chunks):
+                        similarity = result.get('similarity', 'unknown')
+                        page_display = result.get('page_display', result.get('page_numbers', 'unknown'))
+                        logger.info(f"Result {i+1}: Pages {page_display}, Similarity: {similarity}")
+                    
+                    return chunks
+                else:
+                    logger.warning(f"No chunks found for document {document_id}")
+            else:
+                logger.warning(f"No document found with ID {document_id}")
+        except Exception as e:
+            logger.error(f"Error in direct document lookup: {e}")
+            
+        # Attempt to find document by querying documents table directly using known values
+        try:
+            # First try to get all documents to see what's available
+            all_docs = self.vector_store.supabase.table("documents").select("*").execute()
+            if hasattr(all_docs, "data") and all_docs.data:
+                logger.info(f"Available documents: {[doc['id'] for doc in all_docs.data]}")
+                logger.info(f"Machine IDs in docs: {[doc.get('machine_id', 'unknown') for doc in all_docs.data]}")
+                
+                # Try to find a document that matches our machine in some way
+                document_id = None
+                
+                # First, try exact match on document id with machine_id uppercased (most likely case)
+                matching_docs = [doc for doc in all_docs.data if doc['id'] == machine_id.upper()]
+                if matching_docs:
+                    document_id = matching_docs[0]['id']
+                    logger.info(f"Found document by direct ID match: {document_id}")
+                
+                # If that didn't work, check if any document has our machine_id in the machine_id column
+                if not document_id:
+                    matching_docs = [doc for doc in all_docs.data if str(doc.get('machine_id', '')) == machine_id]
+                    if matching_docs:
+                        document_id = matching_docs[0]['id']
+                        logger.info(f"Found document with matching machine_id column: {document_id}")
+                
+                # If we found a document, try to get chunks for it
+                if document_id:
+                    response = self.vector_store.supabase.rpc(
+                        "match_chunks_by_document",
+                        {
+                            "query_embedding": query_embedding,
+                            "input_document_id": document_id,
+                            "match_threshold": 0.0,
+                            "match_count": top_k
+                        }
+                    ).execute()
+                    
+                    if hasattr(response, "data") and response.data:
+                        chunks = response.data
+                        if chunks:
+                            logger.info(f"Retrieved {len(chunks)} chunks for document {document_id}")
+                            return chunks
+        except Exception as e:
+            logger.error(f"Error in document search: {e}")
         
-        return chunks
+        # If original document_id failed and no document was found by machine_id, try querying by the numeric machine_id
+        # from the machine_info if it exists
+        try:
+            if machine_info and 'id' not in machine_info:
+                # Check for any other fields that might be the real database machine_id
+                possible_ids = []
+                for k, v in machine_info.items():
+                    if isinstance(v, (str, int)) and str(v).isdigit():
+                        possible_ids.append(str(v))
+                
+                logger.info(f"Trying possible numeric machine IDs from machine_info: {possible_ids}")
+                
+                for possible_id in possible_ids:
+                    doc_response = self.vector_store.supabase.table("documents").select("*").eq("machine_id", possible_id).execute()
+                    
+                    if hasattr(doc_response, "data") and doc_response.data:
+                        logger.info(f"Found document with machine_id {possible_id}: {doc_response.data[0]}")
+                        
+                        document_id = doc_response.data[0]["id"]
+                        response = self.vector_store.supabase.rpc(
+                            "match_chunks_by_document",
+                            {
+                                "query_embedding": query_embedding,
+                                "input_document_id": document_id,
+                                "match_threshold": 0.0,
+                                "match_count": top_k
+                            }
+                        ).execute()
+                        
+                        if hasattr(response, "data") and response.data:
+                            chunks = response.data
+                            if chunks:
+                                logger.info(f"Retrieved {len(chunks)} chunks using numeric machine_id {possible_id}")
+                                return chunks
+        except Exception as e:
+            logger.error(f"Error looking up documents by numeric machine_id: {e}")
+
+        # BRUTE FORCE: Try all available documents one by one as a last resort
+        try:
+            all_docs = self.vector_store.supabase.table("documents").select("*").execute()
+            if hasattr(all_docs, "data") and all_docs.data:
+                logger.info(f"Trying brute force search through all {len(all_docs.data)} documents")
+                
+                for doc in all_docs.data:
+                    document_id = doc["id"]
+                    logger.info(f"Trying document {document_id}")
+                    
+                    # Use match_chunks_by_document function
+                    response = self.vector_store.supabase.rpc(
+                        "match_chunks_by_document",
+                        {
+                            "query_embedding": query_embedding,
+                            "input_document_id": document_id,
+                            "match_threshold": 0.0,
+                            "match_count": top_k
+                        }
+                    ).execute()
+                    
+                    if hasattr(response, "data") and response.data and len(response.data) > 0:
+                        # For each document, check if any chunks have good similarity
+                        chunks = response.data
+                        logger.info(f"Found {len(chunks)} chunks for document {document_id}")
+                        
+                        # Get best similarity score
+                        best_similarity = 0
+                        for chunk in chunks:
+                            if 'similarity' in chunk and chunk['similarity'] > best_similarity:
+                                best_similarity = chunk['similarity']
+                        
+                        # If we have any decent matches, return them
+                        if best_similarity > 0.5:  # Threshold for "good enough" match
+                            logger.info(f"Found good matches (similarity {best_similarity}) in document {document_id}")
+                            return chunks
+                        else:
+                            logger.info(f"Matches in {document_id} not good enough (max similarity: {best_similarity})")
+        except Exception as e:
+            logger.error(f"Error in brute force document search: {e}")
+        
+        # Last resort: Try general similarity search
+        try:
+            logger.info("Trying general similarity search as final fallback")
+            chunks = self.vector_store.similarity_search(
+                query_embedding=query_embedding,
+                limit=top_k,
+                similarity_threshold=0.0
+            )
+            
+            if chunks:
+                logger.info(f"General search found {len(chunks)} chunks")
+                return chunks
+        except Exception as e:
+            logger.error(f"Final fallback failed: {e}")
+        
+        logger.error(f"All retrieval methods failed for machine {machine_id}")
+        return []
     
     def _format_context(self, chunks: List[Dict[str, Any]]) -> str:
         """
